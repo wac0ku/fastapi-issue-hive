@@ -4,7 +4,7 @@ Problems running the hive itself. (Yes, several of these are the exact failure m
 
 | Problem | Cause & fix |
 |---------|-------------|
-| `ModuleNotFoundError: No module named 'app'` | Install the package first: `pip install -e ".[dev]"` from the repo root. |
+| `ModuleNotFoundError: No module named 'app'` | Install the package first: `poetry install` from the repo root. |
 | Server runs but is unreachable from another machine | uvicorn binds to 127.0.0.1 by default. Start with `--host 0.0.0.0` and open the port in your firewall. |
 | `address already in use` on startup | Another process owns port 8000: `lsof -i :8000`, kill it or use `--port 8001`. |
 | `/analyze/repo` returns 502 "rate limit exceeded" | Unauthenticated GitHub API allows 60 requests/hour per IP. Set `GITHUB_TOKEN` in `.env` (5000/hour). |

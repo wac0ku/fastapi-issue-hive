@@ -7,7 +7,7 @@ Contributions are welcome — the knowledge base in particular grows best throug
 ```bash
 git clone https://github.com/wac0ku/fastapi-issue-hive.git
 cd fastapi-issue-hive
-pip install -e ".[dev]"
+poetry install
 pytest -v        # must be green before and after your change
 ```
 

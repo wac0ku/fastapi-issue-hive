@@ -26,7 +26,8 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install poetry
+      - run: poetry install --no-interaction
 
       - name: Run tests (no API keys required)
-        run: pytest -v
+        run: poetry run pytest -v

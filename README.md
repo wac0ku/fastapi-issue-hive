@@ -43,9 +43,9 @@ flowchart TD
 ```bash
 git clone https://github.com/wac0ku/fastapi-issue-hive.git
 cd fastapi-issue-hive
-pip install -e ".[dev]"
+poetry install
 
-uvicorn app.main:app --reload
+poetry run uvicorn app.main:app --reload
 # → open http://localhost:8000/docs for the interactive API
 ```
 
@@ -81,7 +81,7 @@ Every analysis produces a **research brief**: a dense, self-contained markdown d
 ## Tests
 
 ```bash
-pytest -v   # 12 tests, zero API keys required
+poetry run pytest -v   # 12 tests, zero API keys required
 ```
 
 CI runs the suite on Python 3.10 and 3.12 on every push.

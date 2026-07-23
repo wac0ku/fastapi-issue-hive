@@ -11,7 +11,7 @@
 ```bash
 git clone https://github.com/wac0ku/fastapi-issue-hive.git
 cd fastapi-issue-hive
-pip install -e ".[dev]"
+poetry install
 ```
 
 Prefer an isolated environment:
@@ -19,13 +19,13 @@ Prefer an isolated environment:
 ```bash
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+poetry install
 ```
 
 ## Start the server
 
 ```bash
-uvicorn app.main:app --reload
+poetry run uvicorn app.main:app --reload
 ```
 
 Open **http://localhost:8000/docs** — the interactive Swagger UI lists every endpoint and lets you fire test requests from the browser.
@@ -79,7 +79,7 @@ curl localhost:8000/health
 ## Run the tests
 
 ```bash
-pytest -v
+poetry run pytest -v
 ```
 
 12 tests, all offline, no keys required. If these pass, your installation is good.

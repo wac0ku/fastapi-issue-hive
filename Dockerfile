@@ -2,11 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /srv/hive
 
-COPY pyproject.toml README.md LICENSE ./
+COPY pyproject.toml poetry.lock README.md LICENSE ./
 COPY app ./app
 COPY prompts ./prompts
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir poetry && poetry config virtualenvs.create false && poetry install --only main --no-interaction
 
 EXPOSE 8000
 
