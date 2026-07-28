@@ -122,12 +122,14 @@ app/
 ├── main.py                  # FastAPI app + routes
 ├── config.py                # settings (all keys optional)
 ├── schemas.py               # Pydantic models
-├── knowledge/connectivity.py# curated failure-mode knowledge base
+├── knowledge/
+    └── connectivity.py      # curated failure-mode knowledge base
 ├── services/                # GitHub API client, optional Claude wrapper
 └── hive/
     ├── queen.py             # 🐝 orchestrator
     └── workers/             # triage, diagnosis, research, reporter
-prompts/templates.json       # system prompts for Claude-enhanced mode
+prompts/
+    └── templates.json       # system prompts for Claude-enhanced mode
 tests/                       # pytest suite (offline)
 docs/                        # architecture, niche research, workflows
 ```
