@@ -5,8 +5,11 @@
 > [Referenztabelle](#referenzen--industriestandard-2026) am Ende.
 >
 > **Dieses Dokument ist bewusst auf Deutsch**, alle anderen Repo-Inhalte bleiben englisch.
-> Es beschreibt den Zustand *vor* etwaigen Fixes: die Findings sind dokumentiert, aber
-> außer der uv-Migration wurde kein Anwendungscode geändert.
+>
+> **Nachtrag Juli 2026:** In einer Folgeaufgabe wurden drei Findings behoben — P2-3, P2-7
+> und das unten ergänzte P1-5. Sie sind als ✅ **behoben** markiert und mit dem
+> tatsächlichen Fix beschrieben, statt sie aus dem Dokument zu entfernen. Alle übrigen
+> Findings stehen unverändert offen.
 
 ---
 
@@ -38,11 +41,13 @@ Defekte im Code, die unten mit Reproduktion belegt sind.
 |---|---|---|
 | Architektur & Schnitt | 🟢 gut | Worker-Trennung trägt; Erweiterungspunkte sind real |
 | Typisierung an den Grenzen | 🟢 gut | Pydantic durchgängig, bis auf zwei Endpunkte (P2-4) |
-| Fachlogik / Korrektheit | 🟡 mittel | Triage-Scoring ist nicht kalibriert (P1-1) |
+| Fachlogik / Korrektheit | 🟡 mittel | Triage-Scoring ist nicht kalibriert (P1-2) |
 | Robustheit / Fehlerbehandlung | 🔴 schwach | Ein `except Exception: return None` verschluckt alles (P1-3) |
 | Observability | 🔴 fehlt | Keine einzige Log-Zeile im gesamten Projekt |
 | Security | 🟡 mittel | Ungeprüfte Pfadsegmente, Keys als Klartext-`str` |
-| Tests | 🟡 mittel | 12 grüne Tests, aber beide I/O-Module ungetestet |
+| Kostenkontrolle | 🟢 gut | Calls an Triage gekoppelt, Output-Budget hart, Scan begrenzt (P1-5, P2-3, P2-7 behoben) |
+| NotebookLM-Integration | 🟢 gut | Einzel-Brief selbsttragend, Korpus dedupliziert (Sonderteil unten) |
+| Tests | 🟡 mittel | 24 grüne Tests; `services/github.py` weiterhin ungetestet |
 | Tooling (Lint/Format/Typen) | 🔴 fehlt | Kein ruff, kein mypy, kein pre-commit |
 | CI/CD | 🟡 mittel | Läuft, prüft aber ausschließlich Tests |
 | Packaging | 🟢 gut | Seit der uv-Migration PEP 621 + PEP 735 + Lockfile |
@@ -260,6 +265,32 @@ Aufrufstellen brauchen keine Änderung — `extend()`, Slicing und Iteration fun
 
 ---
 
+### P1-5 · `research`-Worker bezahlte Claude-Calls für verworfene Issues ✅ **behoben**
+
+*Nachgetragen bei der Token-Analyse.*
+
+**Fundstelle:** `app/hive/workers/research.py:42`
+
+`diagnosis.py:31` koppelte seinen Claude-Call an `triage.is_connectivity_issue`,
+`research.py` **nicht**. Für jedes Issue, das die Triage ausdrücklich als „out of scope"
+verwarf, wurde trotzdem ein Deep-Dive bezahlt — über ein Problem, zu dem die Triage
+gerade festgestellt hatte, dass sie nichts dazu weiß.
+
+Besonders unangenehm, weil es in Repo-Scans der **Regelfall** ist: In einem typischen
+Issue-Tracker ist die Mehrheit der Tickets kein Connectivity-Problem. Gemessen für
+`/analyze/repo` mit `limit=25` und 15 Out-of-Scope-Issues: **15 überflüssige Calls,
+~13.800 Input-Token pro Scan.**
+
+`docs/05-configuration.md` behauptete zu diesem Zeitpunkt bereits, Claude werde „only for
+issues that pass triage" aufgerufen — die Doku beschrieb also das beabsichtigte Verhalten,
+und der Code wich davon ab.
+
+**Fix:** derselbe Guard wie in `diagnosis.py`. Abgesichert durch
+`test_research_skips_claude_for_out_of_scope_issue` (zählt die Aufrufe) plus einen
+Gegentest, der belegt, dass Connectivity-Issues weiterhin einen Call auslösen.
+
+---
+
 ## P2 — Wichtig
 
 ### P2-1 · HTTP-Clients werden pro Request neu gebaut
@@ -303,13 +334,19 @@ Synchroner Datei-I/O im Event-Loop, in einer App, deren Knowledge-Base
 `event_loop_blocking` als eigene Diagnosekategorie führt. Behoben durch den `lru_cache`
 aus P1-1.
 
-### P2-3 · `max_tokens` in `prompts/templates.json` ist tote Konfiguration
+### P2-3 · `max_tokens` in `prompts/templates.json` ist tote Konfiguration ✅ **behoben**
 
-`templates.json` definiert pro Worker `max_tokens` (512 / 512 / 400). Gelesen wird davon
-nichts: `ask_claude()` (`claude.py:22`) nutzt ausschließlich sein eigenes Default von
-`1024`, und kein Aufrufer übergibt den Parameter. Entweder auswerten
-(`template.get("max_tokens", max_tokens)`) oder aus der JSON entfernen — aktuell
-suggeriert die Datei eine Steuerung, die es nicht gibt.
+`templates.json` definiert pro Worker `max_tokens` (512 / 512 / 400). Gelesen wurde davon
+nichts: `ask_claude()` nutzte ausschließlich sein eigenes Default von `1024`, und kein
+Aufrufer übergab den Parameter. Das Output-Budget war damit durchgehend **doppelt so hoch
+wie konfiguriert** — bei einem Scan mit 25 Connectivity-Issues 51.200 statt 25.600 Token.
+
+**Fix:** `_resolve_max_tokens(template, explicit)` in `app/services/claude.py` löst in der
+Reihenfolge explizites Argument → `templates.json` → Default auf. Die Funktion bekommt das
+bereits geladene Template übergeben statt eines Worker-Namens, damit die Auflösung keinen
+zusätzlichen Dateizugriff kostet (P2-2 bleibt davon unberührt offen). Abgesichert durch
+`tests/test_token_budget.py::test_max_tokens_precedence` und einen Test, der prüft, dass
+alle ausgelieferten Templates ein Budget unterhalb des Defaults deklarieren.
 
 ### P2-4 · `/health` und `/categories` haben ein leeres OpenAPI-Schema
 
@@ -361,7 +398,7 @@ Standardpraxis und ein Einzeiler:
 anthropic_api_key: SecretStr = SecretStr("")
 ```
 
-### P2-7 · `/analyze/repo` fächert unbegrenzt auf
+### P2-7 · `/analyze/repo` fächert unbegrenzt auf ✅ **behoben**
 
 **Fundstelle:** `app/hive/queen.py:50`
 
@@ -372,8 +409,17 @@ reports = await asyncio.gather(*(self.analyze_issue(issue) for issue in issues))
 Bis zu 25 Issues (`RepoScanRequest.limit`, `le=25`) × 2 Claude-Calls = 50 parallele
 API-Aufrufe aus einem einzigen HTTP-Request, ohne Semaphore und ohne Gesamt-Timeout. Bei
 aktivem Claude-Modus ist das ein zuverlässiger Weg ins Rate-Limit; der Client hängt
-derweil im offenen Request. Ein `asyncio.Semaphore(5)` und ein `asyncio.timeout()` um den
-gesamten Scan sind die minimale Absicherung.
+derweil im offenen Request.
+
+**Fix:** `asyncio.Semaphore(settings.max_concurrent_analyses)` (Default 5) begrenzt die
+Gleichzeitigkeit, ein `asyncio.wait_for` mit `settings.scan_timeout_seconds` (Default 120)
+den Gesamtlauf; `main.py` übersetzt den Timeout in ein `504` statt in ein `500`.
+
+Bewusst `wait_for` statt des lesbareren `asyncio.timeout()`: letzteres gibt es erst ab
+Python 3.11, und `requires-python` verspricht 3.10 — die CI-Matrix testet es.
+
+Abgesichert durch `test_repo_scan_caps_concurrency` (misst die tatsächliche Parallelität)
+und `test_repo_scan_times_out_instead_of_hanging`.
 
 ### P2-8 · `connectivity_reports` wird berechnet, aber nicht verwendet
 
@@ -572,6 +618,67 @@ nicht gesetzten Default.
 
 ---
 
+## Sonderteil: Taugt die NotebookLM-Integration? ✅ **verbessert**
+
+Die Grundidee ist richtig. NotebookLM hat keine öffentliche API, also ist „erzeuge gute
+Quelldokumente" der einzig verfügbare Integrationsweg — und ein Werkzeug, das ohnehin
+Triage-Verdikt, Hintergrund und Doku-Links zusammenträgt, ist dafür gut aufgestellt.
+
+Für den **Einzelfall** funktioniert das auch: Ein Brief ist selbsttragend, und
+NotebookLM-Antworten sind nur so gut wie ihre Quellen.
+
+Für den **Korpusfall** brach es — und ausgerechnet den bewarb `docs/07` selbst unter
+„Niche research at scale" als Hauptanwendung. Gemessen an einem Connectivity-Brief:
+
+| Anteil | Inhalt |
+|---|---|
+| **59%** | Knowledge-Base-Boilerplate, identisch in jedem Brief derselben Kategorie |
+| **18%** | Prompt-Block, wörtlich identisch in **jedem** Brief |
+| **17%** | tatsächlich issue-spezifisch |
+
+Bei Out-of-Scope-Issues kippt das Verhältnis vollends: 54% Prompt-Block, 34% Eigeninhalt.
+Wer 20 Briefs in ein Notebook lädt, füllt es zu rund drei Vierteln mit Dubletten. Auf die
+von der Doku selbst vorgeschlagene Frage *„Which failure categories cluster most often?"*
+sieht NotebookLM dieselben Root-Cause-Absätze dutzendfach — es gruppiert dann Wiederholung
+statt Evidenz. Erschwerend: Für den beschriebenen Workflow gab es **gar keinen Endpunkt**,
+die Doku zeigte eine manuelle `curl | python -c`-Extraktion pro Issue.
+
+**Umsetzung:** Der Scan zerfällt jetzt in den Teil, der sich ändert, und den, der nicht:
+
+- `POST /analyze/repo/corpus` — ein Dokument pro Scan: Häufigkeitstabelle der Kategorien
+  (die direkte Antwort auf die Clustering-Frage), pro Issue nur Titel, Link, Triage-Verdikt,
+  gerankte Kategorien und ggf. Claude-Notizen, und der Prompt-Block genau **einmal**.
+- `GET /knowledge/export` — die Knowledge-Base als eigene, wiederverwendbare Quelle.
+
+Beide liefern `text/markdown` direkt, der JSON-Extraktionsschritt entfällt.
+
+Gemessen an 20 Issues gegenüber dem bisherigen Aneinanderhängen der Briefs:
+
+| | Zeichen | ~Token |
+|---|---|---|
+| bisher: 20 Briefs | 22.569 | 6.100 |
+| neu: Korpus | 5.417 | 1.464 |
+| neu: Knowledge-Base (einmalig, wiederverwendbar) | 8.539 | 2.308 |
+
+Der Korpus allein ist **76% kleiner**; beide Quellen zusammen 39%, und die
+Knowledge-Base amortisiert sich über jeden weiteren Scan im selben Notebook. Der
+KB-Fließtext taucht im Korpus **0×** statt 4× auf, der Prompt-Block **1×** statt 20×.
+
+**Einzel-Briefs bleiben bewusst unverändert** — ihre Selbsttragfähigkeit ist in `docs/07`
+ausdrücklich als Designziel benannt und für den Einzelfall auch die richtige Wahl.
+
+### Was hier *nicht* geholfen hätte
+
+Naheliegend, aber für dieses Projekt unwirksam: den Antwortstil zu komprimieren
+(„caveman-Prompting" und Verwandtes). Die Calls sind One-Shot-Aufrufe mit `max_tokens`-Cap,
+kein Chat; der Diagnosis-System-Prompt verbietet Präambeln bereits wörtlich; und die
+System-Prompts sind 71–128 Token groß, ihre Kompression also irrelevant. **Anthropic
+Prompt-Caching greift hier ebenfalls nicht** — es verlangt ein Präfix von mindestens 1024
+Token. Der Hebel lag auf der Anzahl der Calls (P1-5) und einem harten Output-Budget
+(P2-3), nicht am Formulierungsstil.
+
+---
+
 ## Referenzen — Industriestandard 2026
 
 | Thema | Standard / Werkzeug | Stand im Projekt |
@@ -597,7 +704,7 @@ nicht gesetzten Default.
 Weitere überprüfbar wird: ruff + mypy + pre-commit einziehen (P3-1), CI um Lint,
 Typecheck, `permissions` und `pip-audit` erweitern (P3-3), Logging-Grundgerüst legen
 (P2-9). Dabei fallen etliche kleine Findings automatisch mit ab — der lokale Import in
-`main.py:50`, ungenutzte Variablen, die tote `max_tokens`-Konfiguration.
+`main.py`, ungenutzte Variablen, tote Konfiguration.
 
 **Stufe 2 — Die vier P1-Defekte.** `tuple` statt `list` in der Knowledge-Base (P1-4,
 Zweizeiler), Fehlerbehandlung in `claude.py` differenzieren (P1-3), `prompts/` als
@@ -605,12 +712,14 @@ Package-Data über `importlib.resources` (P1-1, erlaubt danach die Dockerfile-Ve
 Das Triage-Scoring (P1-2) zuletzt und **nur mit vorher aufgebautem Fixture-Datensatz** —
 ohne Messgröße ist jede Änderung an der Formel eine Wette.
 
-**Stufe 3 — Tests an den I/O-Rändern.** `services/github.py` und `services/claude.py` mit
-respx abdecken (P3-2), Coverage-Gate setzen. Erst damit werden die Änderungen aus Stufe 2
-gegen Regressionen abgesichert.
+**Stufe 3 — Tests an den I/O-Rändern.** `services/github.py` mit respx abdecken (P3-2) —
+das einzige Modul ohne jeden Test. Für `services/claude.py` existiert inzwischen ein Test
+der Budget-Auflösung, der eigentliche API-Pfad ist aber weiterhin ungetestet.
+Coverage-Gate setzen. Erst damit werden die Änderungen aus Stufe 2 gegen Regressionen
+abgesichert.
 
-**Stufe 4 — Produktionsreife.** Geteilte Clients über `lifespan` (P2-1), Semaphore und
-Timeout für `/analyze/repo` (P2-7), RFC-9457-Fehlerformat, Response-Models für `/health`
-und `/categories` (P2-4), Docker-Härtung (P3-4).
+**Stufe 4 — Produktionsreife.** Geteilte Clients über `lifespan` (P2-1),
+RFC-9457-Fehlerformat, Response-Models für `/health` und `/categories` (P2-4),
+Docker-Härtung (P3-4).
 
 Die Doku-Fixes aus P3-5 sind Minutensache und passen in jede der Stufen.
