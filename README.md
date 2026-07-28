@@ -59,6 +59,8 @@ Needs [uv](https://docs.astral.sh/uv/getting-started/installation/); it provisio
 | `GET /categories` | The 9 connectivity failure modes the hive can diagnose |
 | `POST /analyze/issue` | Full hive pipeline on a single issue (title + body) |
 | `POST /analyze/repo` | Fetch open issues of a public GitHub repo and analyze each |
+| `POST /analyze/repo/corpus` | The same scan as one deduplicated NotebookLM source document (markdown) |
+| `GET /knowledge/export` | The whole knowledge base as a NotebookLM source document (markdown) |
 
 Example — scan a repository:
 
@@ -76,7 +78,9 @@ Each category ships with regex triage signals, known root causes, concrete fixes
 
 ## NotebookLM research workflow
 
-Every analysis produces a **research brief**: a dense, self-contained markdown document designed to be dropped into a [NotebookLM](https://notebooklm.google.com) notebook as a source — for audio overviews, FAQ generation, and deep-dive follow-up questions. See [docs/07-notebooklm-workflow.md](docs/07-notebooklm-workflow.md).
+Every analysis produces a **research brief**: a dense, self-contained markdown document designed to be dropped into a [NotebookLM](https://notebooklm.google.com) notebook as a source — for audio overviews, FAQ generation, and deep-dive follow-up questions.
+
+For a whole repository, `POST /analyze/repo/corpus` returns the scan as a *single* deduplicated document with a category frequency table, and `GET /knowledge/export` supplies the shared background once instead of repeating it per issue. See [docs/07-notebooklm-workflow.md](docs/07-notebooklm-workflow.md).
 
 ## Tests
 

@@ -127,6 +127,39 @@ Pull requests returned by the GitHub issues endpoint are filtered out.
 | Rate limit | `GitHub API rate limit exceeded — set GITHUB_TOKEN in .env` |
 | Other | `GitHub API error <status>` |
 
+**Response `504`** — the scan exceeded `SCAN_TIMEOUT_SECONDS` (`Repository scan exceeded its time budget`).
+
+---
+
+## `POST /analyze/repo/corpus`
+
+The same scan as **one deduplicated markdown document** for NotebookLM. Same request body as `/analyze/repo`, and the same `502`/`504` responses.
+
+**Response `200`** — `text/markdown`, not JSON:
+
+```markdown
+# Connectivity Scan: fastapi/fastapi
+
+Scanned 25 open issues on 2026-07-28; 9 matched a known connectivity failure mode.
+
+## Category frequency
+
+| Category | Issues | Avg. confidence |
+|---|---|---|
+| CORS / Cross-Origin (`cors`) | 4 | 0.91 |
+...
+```
+
+Category background is deliberately **absent** — pair this with `GET /knowledge/export` in the same notebook. See [07 — NotebookLM Workflow](07-notebooklm-workflow.md).
+
+---
+
+## `GET /knowledge/export`
+
+The whole knowledge base as a single NotebookLM source: every category with its root causes, fixes and documentation links.
+
+**Response `200`** — `text/markdown`. Static, so it can be cached or committed alongside your notebooks; add it once and reuse it across scans.
+
 ---
 
 ## Programmatic use without HTTP

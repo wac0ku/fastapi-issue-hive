@@ -38,6 +38,7 @@ class HiveQueen:
 
         return AnalysisReport(
             issue_title=issue.title,
+            issue_url=issue.url,
             triage=triage_result,
             diagnosis=diagnosis_result,
             research_brief=research_brief,

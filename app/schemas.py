@@ -46,6 +46,7 @@ class ResearchBrief(BaseModel):
 
 class AnalysisReport(BaseModel):
     issue_title: str
+    issue_url: str = ""
     triage: TriageResult
     diagnosis: Diagnosis
     research_brief: ResearchBrief
