@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import FastAPI, HTTPException
 
 from app import __version__
@@ -53,3 +55,7 @@ async def analyze_repo(request: RepoScanRequest) -> RepoScanReport:
         return await queen.scan_repository(request.owner, request.repo, request.limit)
     except GitHubError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=504, detail="Repository scan exceeded its time budget"
+        ) from exc

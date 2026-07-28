@@ -39,12 +39,16 @@ async def run(issue: IssueInput, triage: TriageResult) -> ResearchBrief:
             "",
         ]
 
-    extra = await ask_claude(
-        "research",
-        f"Issue: {issue.title}\n\n{issue.body[:3000]}\n\nTriage: {triage.summary}",
-    )
-    if extra:
-        sections += ["## Claude Deep-Dive", extra, ""]
+    # Only spend a Claude call when triage actually matched something. A deep-dive on an
+    # issue the hive just classified as out of scope has nothing to work with, and in a
+    # repo scan those are the majority. Mirrors the guard in diagnosis.py.
+    if triage.is_connectivity_issue:
+        extra = await ask_claude(
+            "research",
+            f"Issue: {issue.title}\n\n{issue.body[:3000]}\n\nTriage: {triage.summary}",
+        )
+        if extra:
+            sections += ["## Claude Deep-Dive", extra, ""]
 
     sections += [
         "## Suggested NotebookLM prompts",

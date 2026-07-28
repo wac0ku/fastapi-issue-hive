@@ -17,6 +17,8 @@ cp .env.example .env
 | `GITHUB_TOKEN` | *(empty)* | Raises the GitHub API rate limit for `/analyze/repo` from 60 to 5000 requests/hour. A [fine-grained token](https://github.com/settings/tokens) with public repo read access suffices. |
 | `HIVE_MODEL` | `claude-sonnet-5` | Claude model used by workers in claude-enhanced mode. |
 | `MAX_ISSUES_PER_REPO` | `10` | Hard server-side cap on issues fetched per repo scan (the request's `limit` is clamped to this). |
+| `MAX_CONCURRENT_ANALYSES` | `5` | How many issues of a scan are analysed at the same time. Caps how many Claude calls one request can have in flight. |
+| `SCAN_TIMEOUT_SECONDS` | `120` | Time budget for a whole repo scan. Exceeding it returns `504` instead of leaving the client hanging. |
 
 ## Mode selection logic
 
@@ -38,7 +40,7 @@ Any current Claude model ID works. Trade-off guidance:
 - `claude-haiku-4-5-20251001` — cheapest, fine for high-volume repo scans
 - `claude-opus-4-8` — maximum depth, rarely needed for this task shape
 
-Costs stay small either way: the hive sends at most ~4–7k input tokens per issue (two worker calls), and only for issues that pass triage.
+Costs stay small either way: the hive sends at most ~2.1k input tokens per issue (two worker calls), and only for issues that pass triage — an issue the triage rejects costs nothing at all, because both the diagnosis and the research worker skip Claude entirely. Each call's output is capped by the `max_tokens` its worker declares in `prompts/templates.json` (512 for diagnosis and research), not by an open-ended default.
 
 ## Security notes
 
