@@ -5,8 +5,8 @@ The hive is a stateless FastAPI app: no database, no filesystem writes, no sessi
 ## Bare uvicorn (single machine)
 
 ```bash
-pip install .
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+uv sync --locked --no-dev
+uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
 `--host 0.0.0.0` is required to accept connections from outside the machine — yes, the hive would triage that mistake as `connection_refused`.

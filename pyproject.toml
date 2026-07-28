@@ -7,25 +7,29 @@ license = { text = "MIT" }
 requires-python = ">=3.10"
 authors = [{ name = "wac0ku" }]
 dependencies = [
-    "fastapi (>=0.115)",
-    "uvicorn[standard] (>=0.30)",
-    "httpx (>=0.27)",
-    "pydantic (>=2.7)",
-    "pydantic-settings (>=2.3)",
-    "anthropic (>=0.40)",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "anthropic>=0.40",
 ]
 
-[tool.poetry]
-packages = [{ include = "app" }]
-
-[tool.poetry.group.dev.dependencies]
-pytest = ">=8.0"
-pytest-asyncio = ">=0.23"
+# PEP 735 dependency group — read natively by uv (`uv sync` installs it by default,
+# `uv sync --no-dev` skips it, which is what the Docker build does).
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [build-system]
-requires = ["poetry-core>=2.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

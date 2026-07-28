@@ -19,15 +19,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      # setup-uv provisions the interpreter itself, so no separate setup-python step.
+      # python-version overrides the .python-version file for this matrix leg.
+      # Pinned to a commit SHA: setup-uv stopped publishing moving major tags after v7,
+      # so `@v9` does not resolve. SHA pinning is also what supply-chain guidance wants.
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
+          enable-cache: true
 
+      # --locked fails the build if uv.lock is out of sync with pyproject.toml
+      # instead of silently re-resolving.
       - name: Install dependencies
-        run: pip install poetry
-      - run: poetry install --no-interaction
+        run: uv sync --locked --dev
 
       - name: Run tests (no API keys required)
-        run: poetry run pytest -v
+        run: uv run pytest -v

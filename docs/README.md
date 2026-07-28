@@ -10,6 +10,7 @@
 | [06 — Deployment](06-deployment.md) | Docker, docker-compose, nginx, free hosting |
 | [07 — NotebookLM Workflow](07-notebooklm-workflow.md) | Using research briefs for deep-dive research |
 | [08 — Troubleshooting](08-troubleshooting.md) | Common problems running the hive itself |
+| [09 — Code Review](09-code-review.md) | Prioritised findings against 2026 Python/FastAPI standards (in German) |
 
 Additional material:
 
