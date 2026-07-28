@@ -3,7 +3,11 @@
 NotebookLM has no public API, so the hive produces what NotebookLM consumes
 best: a dense, self-contained markdown source document. Drop the brief into
 a NotebookLM notebook to generate audio overviews, FAQs, and deep-dive
-follow-ups on the issue. See docs/notebooklm-workflow.md.
+follow-ups on the issue. See docs/07-notebooklm-workflow.md.
+
+A brief stays self-contained on purpose. For a whole repository scan that would mean
+twenty copies of the same category background, so reporter.build_corpus() produces a
+deduplicated document instead.
 """
 
 from app.knowledge import CATEGORIES

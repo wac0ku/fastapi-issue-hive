@@ -171,12 +171,14 @@ import asyncio
 from app.hive import HiveQueen
 from app.schemas import IssueInput
 
+
 async def main():
     queen = HiveQueen()
     report = await queen.analyze_issue(
         IssueInput(title="WebSocket closes with 1006 behind nginx", body="...")
     )
     print(report.suggested_reply)
+
 
 asyncio.run(main())
 ```

@@ -13,7 +13,7 @@ async def test_full_pipeline_heuristic_mode(queen):
     issue = IssueInput(
         title="Request hangs and times out under concurrent load",
         body="Endpoints using async def with time.sleep block the event loop. "
-             "Only one request at a time gets processed, everything else times out.",
+        "Only one request at a time gets processed, everything else times out.",
     )
     report = await queen.analyze_issue(issue)
 
@@ -30,7 +30,7 @@ async def test_research_brief_is_notebooklm_ready(queen):
     issue = IssueInput(
         title="WebSocket closes with code 1006 behind nginx",
         body="wss:// handshake succeeds locally but the connection closed error "
-             "appears in production behind nginx.",
+        "appears in production behind nginx.",
     )
     report = await queen.analyze_issue(issue)
     brief = report.research_brief

@@ -6,7 +6,7 @@ def test_cors_issue_detected():
     issue = IssueInput(
         title="CORS error: blocked by CORS policy from React frontend",
         body="Browser console shows: No 'Access-Control-Allow-Origin' header is present. "
-             "The preflight OPTIONS request fails.",
+        "The preflight OPTIONS request fails.",
     )
     result = triage.run(issue)
     assert result.is_connectivity_issue
@@ -18,7 +18,7 @@ def test_docker_networking_detected():
     issue = IssueInput(
         title="Cannot reach FastAPI container from docker-compose service",
         body="My frontend container gets 'name or service not known' when calling "
-             "http://localhost:8000. Both run via docker-compose.",
+        "http://localhost:8000. Both run via docker-compose.",
     )
     result = triage.run(issue)
     assert result.is_connectivity_issue

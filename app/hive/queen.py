@@ -1,7 +1,6 @@
 """The Hive Queen — orchestrates the worker agents for each analysis.
 
-Pipeline (mirrors the hierarchical topology of the original
-Digital Product Factory swarm, config/swarm-config.json):
+Pipeline (a hierarchical topology: one orchestrator, workers that decide):
 
     Queen
       ├─ triage worker      (sync, deterministic, always first)

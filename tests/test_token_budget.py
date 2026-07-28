@@ -18,16 +18,16 @@ from app.services.claude import DEFAULT_MAX_TOKENS, _resolve_max_tokens
 class CallCounter:
     """Stands in for ask_claude and records how often it was reached."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.calls = 0
 
-    async def __call__(self, worker, user_content, max_tokens=None):
+    async def __call__(self, worker: str, user_content: str, max_tokens: int | None = None) -> str:
         self.calls += 1
         return "stand-in deep dive"
 
 
 @pytest.fixture
-def spy(monkeypatch) -> CallCounter:
+def spy(monkeypatch: pytest.MonkeyPatch) -> CallCounter:
     counter = CallCounter()
     monkeypatch.setattr(research, "ask_claude", counter)
     return counter
@@ -82,9 +82,7 @@ async def test_repo_scan_caps_concurrency(monkeypatch):
     """One request must not fan out into a Claude call per issue simultaneously."""
     issues = [IssueInput(title=f"CORS error number {n}", body="preflight fails") for n in range(12)]
 
-    monkeypatch.setattr(
-        queen_module, "get_settings", lambda: Settings(max_concurrent_analyses=3)
-    )
+    monkeypatch.setattr(queen_module, "get_settings", lambda: Settings(max_concurrent_analyses=3))
 
     async def fake_fetch(owner, repo, limit):
         return issues
@@ -114,9 +112,7 @@ async def test_repo_scan_caps_concurrency(monkeypatch):
 
 
 async def test_repo_scan_times_out_instead_of_hanging(monkeypatch):
-    monkeypatch.setattr(
-        queen_module, "get_settings", lambda: Settings(scan_timeout_seconds=0.05)
-    )
+    monkeypatch.setattr(queen_module, "get_settings", lambda: Settings(scan_timeout_seconds=0.05))
 
     async def fake_fetch(owner, repo, limit):
         return [IssueInput(title="CORS error blocked", body="preflight fails")]

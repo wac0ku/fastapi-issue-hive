@@ -43,12 +43,11 @@ SAMPLE_ISSUES = [
 
 def scan_corpus() -> str:
     with patch.object(queen_module, "fetch_open_issues", return_value=SAMPLE_ISSUES):
-        response = client.post(
-            "/analyze/repo/corpus", json={"owner": "o", "repo": "r", "limit": 4}
-        )
+        response = client.post("/analyze/repo/corpus", json={"owner": "o", "repo": "r", "limit": 4})
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/markdown")
-    return response.text
+    text: str = response.text
+    return text
 
 
 def test_knowledge_export_carries_every_category():
@@ -101,9 +100,7 @@ def test_corpus_links_back_to_every_issue():
 def test_corpus_is_much_smaller_than_concatenated_briefs():
     """Regression guard for the dedup win — briefs stay self-contained, the corpus doesn't."""
     with patch.object(queen_module, "fetch_open_issues", return_value=SAMPLE_ISSUES):
-        report = client.post(
-            "/analyze/repo", json={"owner": "o", "repo": "r", "limit": 4}
-        ).json()
+        report = client.post("/analyze/repo", json={"owner": "o", "repo": "r", "limit": 4}).json()
 
     concatenated = "\n\n".join(r["research_brief"]["markdown"] for r in report["reports"])
     corpus = scan_corpus()

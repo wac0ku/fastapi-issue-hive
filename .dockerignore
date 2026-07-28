@@ -1,0 +1,22 @@
+# Keep the build context to what the image actually needs. Every COPY here is
+# explicit, but this stops a stray `COPY . .` from ever shipping secrets or history.
+.git
+.github
+.venv
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+dist/
+build/
+*.egg-info/
+docs/
+tests/
+reports/
+briefs/
