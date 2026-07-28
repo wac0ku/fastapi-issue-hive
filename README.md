@@ -107,6 +107,7 @@ Full documentation lives in [`docs/`](docs/README.md):
 | [06 — Deployment](docs/06-deployment.md) | Docker, nginx, free hosting |
 | [07 — NotebookLM Workflow](docs/07-notebooklm-workflow.md) | Research briefs as NotebookLM sources |
 | [08 — Troubleshooting](docs/08-troubleshooting.md) | Common problems & fixes |
+| [09 — Code Review](docs/09-code-review.md) | Prioritised findings against 2026 standards (in German) |
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
