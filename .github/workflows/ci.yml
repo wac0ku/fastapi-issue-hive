@@ -85,7 +85,10 @@ jobs:
           enable-cache: true
 
       # Audits the resolved runtime tree, not the dev tooling.
+      # --no-emit-project drops the "-e ." self-reference: pip-audit installs the
+      # requirements with hashes, and an editable directory has no single file to hash.
+      # The project's own code is not what an advisory database has anything to say about.
       - name: pip-audit
         run: |
-          uv export --locked --no-dev --format requirements-txt > requirements.txt
+          uv export --locked --no-dev --no-emit-project --format requirements-txt > requirements.txt
           uvx pip-audit --requirement requirements.txt --strict
