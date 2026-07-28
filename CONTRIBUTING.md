@@ -7,8 +7,8 @@ Contributions are welcome — the knowledge base in particular grows best throug
 ```bash
 git clone https://github.com/wac0ku/fastapi-issue-hive.git
 cd fastapi-issue-hive
-poetry install
-pytest -v        # must be green before and after your change
+uv sync
+uv run pytest -v   # must be green before and after your change
 ```
 
 ## What to contribute

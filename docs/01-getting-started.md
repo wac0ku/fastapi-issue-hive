@@ -2,31 +2,26 @@
 
 ## Requirements
 
-- Python **3.10+** (CI tests 3.10 and 3.12)
-- pip
-- That's it. No API keys, no database, no external services.
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- That's it. No API keys, no database, no external services. uv fetches the right Python itself (`.python-version` pins 3.12; the project supports 3.10+, CI tests 3.10 and 3.12).
 
 ## Install
 
 ```bash
 git clone https://github.com/wac0ku/fastapi-issue-hive.git
 cd fastapi-issue-hive
-poetry install
+uv sync
 ```
 
-Prefer an isolated environment:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-poetry install
-```
+`uv sync` creates `.venv/` in the repo root and installs the exact versions from `uv.lock` — no manual virtualenv step needed.
 
 ## Start the server
 
 ```bash
-poetry run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload
 ```
+
+`uv run` executes inside that virtualenv, so there is nothing to activate.
 
 Open **http://localhost:8000/docs** — the interactive Swagger UI lists every endpoint and lets you fire test requests from the browser.
 
@@ -79,7 +74,7 @@ curl localhost:8000/health
 ## Run the tests
 
 ```bash
-poetry run pytest -v
+uv run pytest -v
 ```
 
 12 tests, all offline, no keys required. If these pass, your installation is good.

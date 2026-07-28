@@ -43,13 +43,13 @@ flowchart TD
 ```bash
 git clone https://github.com/wac0ku/fastapi-issue-hive.git
 cd fastapi-issue-hive
-poetry install
+uv sync
 
-poetry run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload
 # → open http://localhost:8000/docs for the interactive API
 ```
 
-No configuration needed. Optionally copy `.env.example` to `.env` to enable Claude enhancement (`ANTHROPIC_API_KEY`) or raise GitHub rate limits (`GITHUB_TOKEN`).
+Needs [uv](https://docs.astral.sh/uv/getting-started/installation/); it provisions Python and the virtualenv for you. No further configuration needed. Optionally copy `.env.example` to `.env` to enable Claude enhancement (`ANTHROPIC_API_KEY`) or raise GitHub rate limits (`GITHUB_TOKEN`).
 
 ## API
 
@@ -81,7 +81,7 @@ Every analysis produces a **research brief**: a dense, self-contained markdown d
 ## Tests
 
 ```bash
-poetry run pytest -v   # 12 tests, zero API keys required
+uv run pytest -v   # 12 tests, zero API keys required
 ```
 
 CI runs the suite on Python 3.10 and 3.12 on every push.
