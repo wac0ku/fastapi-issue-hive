@@ -25,7 +25,9 @@ async def run(issue: IssueInput, triage: TriageResult) -> Diagnosis:
 
     if not triage.is_connectivity_issue:
         root_causes = ["Issue does not match any known FastAPI connectivity pattern."]
-        fixes = ["Re-run with a more specific description (error message, deployment setup, client type)."]
+        fixes = [
+            "Re-run with a more specific description (error message, deployment setup, client type)."
+        ]
 
     claude_notes = None
     if triage.is_connectivity_issue:

@@ -5,8 +5,45 @@
 > [Referenztabelle](#referenzen--industriestandard-2026) am Ende.
 >
 > **Dieses Dokument ist bewusst auf Deutsch**, alle anderen Repo-Inhalte bleiben englisch.
-> Es beschreibt den Zustand *vor* etwaigen Fixes: die Findings sind dokumentiert, aber
-> außer der uv-Migration wurde kein Anwendungscode geändert.
+>
+> **Stand Juli 2026: alle Findings sind behoben.** Die Problembeschreibungen bleiben
+> stehen — sie sind die Begründung für den heutigen Code und erklären, warum manches so
+> aussieht, wie es aussieht. Jedes Finding ist mit ✅ markiert; die Übersicht darunter
+> nennt zu jedem den konkreten Fix.
+
+---
+
+## Status aller Findings
+
+| # | Finding | Fix |
+|---|---|---|
+| P1-1 | `prompts/` nicht gepackt, `PROMPTS_PATH` zeigt ins Leere | Templates nach `app/prompts/` verschoben, Laden über `importlib.resources`; im Wheel enthalten, Dockerfile installiert die App regulär |
+| P1-2 | Triage-Scoring nicht kalibriert | Gewichtete Signale (`Signal.weight`) + Sättigungskurve statt Division durch Kategoriegröße; gemessen an `tests/fixtures/triage_corpus.py` |
+| P1-3 | `except Exception: return None` verschluckt alles | `AnthropicError` → Warnung, sonstige → `logger.exception`; leerer Text-Block wird erkannt statt zu crashen |
+| P1-4 | `frozen=True` schützt Listenfelder nicht | Felder sind `tuple`; Kategorien sind hashbar und wirklich unveränderlich |
+| P1-5 | `research` bezahlte Calls für verworfene Issues | Guard auf `is_connectivity_issue` wie in `diagnosis` |
+| P2-1 | HTTP-Clients pro Request neu | Geteilte, gecachte Clients; Schließen über FastAPI-`lifespan` |
+| P2-2 | `load_prompt()` liest JSON bei jedem Aufruf | `@lru_cache` auf `_templates()` |
+| P2-3 | `max_tokens` tote Konfiguration | `_resolve_max_tokens()`: Argument → Template → Default |
+| P2-4 | Leeres OpenAPI-Schema für `/health`, `/categories` | `HealthResponse` und `CategoryInfo` als Response-Models |
+| P2-5 | `owner`/`repo` ungeprüft in der URL | Pattern nach GitHubs Namensregeln; `../..` ergibt jetzt 422 |
+| P2-6 | API-Keys als `str` | `SecretStr`, Zugriff über `.get_secret_value()` |
+| P2-7 | `/analyze/repo` fächert unbegrenzt auf | Semaphore + `wait_for`-Budget, Timeout wird zu 504 |
+| P2-8 | `connectivity_reports` berechnet, nicht verwendet | Feld dokumentiert (`Field(description=...)`), Semantik ist jetzt Teil des Contracts |
+| P2-9 | Kein Logging, keine Request-ID, kein Fehlerformat | JSON-Logging, `X-Request-ID` in Logs und Antwort, RFC-9457-`problem+json` |
+| P2-10 | Keine CORS-Middleware | `CORSMiddleware`, opt-in über `ALLOWED_ORIGINS` (leer = keine Header) |
+| P2-11 | GitHub-Client ohne Retries/429/Pagination | Backoff mit `Retry-After`, 429 und 403 unterschieden, Pagination bis `limit` gefüllt ist |
+| P2-12 | Version an zwei Stellen | `importlib.metadata.version()`, `pyproject.toml` ist die einzige Quelle |
+| P2-13 | Regexes nicht vorkompiliert | Einmal beim Import kompiliert, Case-Folding über Pattern-Flags |
+| P3-1 | Kein Lint-/Format-/Type-Tooling | ruff + mypy `strict` + pre-commit; beide laufen sauber durch |
+| P3-2 | I/O-Module ungetestet | `services/github.py` und `services/claude.py` mit respx bzw. Stub-Client abgedeckt; Coverage-Gate bei 90% |
+| P3-3 | CI prüft nur Tests | Eigene Jobs für Lint/Typen und `pip-audit`, `permissions`, `concurrency`, Matrix 3.10–3.13 |
+| P3-4 | Docker läuft als root | Non-root-User, `HEALTHCHECK`, `.dockerignore`, Base-Image per Digest gepinnt |
+| P3-5 | Doku-Fehler | Kaputter Doku-Verweis, Fremdprojekt-Referenz und fehlende `.env.example`-Einträge korrigiert |
+| P3-6 | Kommende Breaking Changes | `filterwarnings = ["error"]` mit gezielter Ausnahme; `asyncio_default_fixture_loop_scope` gesetzt |
+
+Beim Beheben kamen zwei Defekte dazu, die im ursprünglichen Review nicht standen und
+erst durch die neuen Tests sichtbar wurden — beide unten als P4 dokumentiert.
 
 ---
 
@@ -18,9 +55,11 @@ mit Pydantic typisiert, und die „Graceful Degradation" ohne API-Key ist keine 
 sondern real: die 12 Tests laufen komplett offline. Das ist mehr Disziplin, als man in
 Projekten dieser Größe üblicherweise sieht.
 
-Der Abstand zum Industriestandard liegt fast vollständig **außerhalb** der Fachlogik —
-in Tooling, Observability und Testabdeckung der I/O-Ränder. Dazu kommen vier konkrete
-Defekte im Code, die unten mit Reproduktion belegt sind.
+Der Abstand zum Industriestandard lag fast vollständig **außerhalb** der Fachlogik — in
+Tooling, Observability und Testabdeckung der I/O-Ränder. Dazu kamen vier konkrete Defekte
+im Code, die unten mit Reproduktion belegt sind. Alles davon ist inzwischen behoben; die
+Zahlen in der Tabelle beschreiben den heutigen Stand, die Findings darunter den Weg
+dorthin.
 
 **Was gut ist**
 
@@ -36,22 +75,26 @@ Defekte im Code, die unten mit Reproduktion belegt sind.
 
 | Dimension | Stand | Kommentar |
 |---|---|---|
-| Architektur & Schnitt | 🟢 gut | Worker-Trennung trägt; Erweiterungspunkte sind real |
-| Typisierung an den Grenzen | 🟢 gut | Pydantic durchgängig, bis auf zwei Endpunkte (P2-4) |
-| Fachlogik / Korrektheit | 🟡 mittel | Triage-Scoring ist nicht kalibriert (P1-1) |
-| Robustheit / Fehlerbehandlung | 🔴 schwach | Ein `except Exception: return None` verschluckt alles (P1-3) |
-| Observability | 🔴 fehlt | Keine einzige Log-Zeile im gesamten Projekt |
-| Security | 🟡 mittel | Ungeprüfte Pfadsegmente, Keys als Klartext-`str` |
-| Tests | 🟡 mittel | 12 grüne Tests, aber beide I/O-Module ungetestet |
-| Tooling (Lint/Format/Typen) | 🔴 fehlt | Kein ruff, kein mypy, kein pre-commit |
-| CI/CD | 🟡 mittel | Läuft, prüft aber ausschließlich Tests |
-| Packaging | 🟢 gut | Seit der uv-Migration PEP 621 + PEP 735 + Lockfile |
+| Dimension | vorher | heute | Kommentar |
+|---|---|---|---|
+| Architektur & Schnitt | 🟢 | 🟢 | Worker-Trennung trägt; Erweiterungspunkte sind real |
+| Typisierung an den Grenzen | 🟢 | 🟢 | Pydantic durchgängig, mypy `strict` läuft sauber |
+| Fachlogik / Korrektheit | 🟡 | 🟢 | Gewichtetes Scoring, an einem Fixture-Korpus gemessen: P/R/F1 = 1.00 |
+| Robustheit / Fehlerbehandlung | 🔴 | 🟢 | Fehlerklassen getrennt, alles geloggt, RFC 9457 nach außen |
+| Observability | 🔴 | 🟢 | JSON-Logs, Request-ID in Logs und Antwort-Header |
+| Security | 🟡 | 🟢 | Pfadsegmente validiert, `SecretStr`, non-root-Container |
+| Kostenkontrolle | 🟢 | 🟢 | Calls an Triage gekoppelt, Output-Budget hart, Scan begrenzt |
+| NotebookLM-Integration | 🟡 | 🟢 | Einzel-Brief selbsttragend, Korpus dedupliziert (Sonderteil unten) |
+| Tests | 🟡 | 🟢 | 84 Tests, 95% Coverage, Gate bei 90%, I/O gemockt |
+| Tooling (Lint/Format/Typen) | 🔴 | 🟢 | ruff + mypy `strict` + pre-commit, alle grün |
+| CI/CD | 🟡 | 🟢 | Lint-, Test- und Audit-Jobs, Least-Privilege, Matrix 3.10–3.13 |
+| Packaging | 🟢 | 🟢 | PEP 621 + PEP 735 + Lockfile; Package-Data korrekt |
 
 ---
 
 ## P1 — Kritisch
 
-### P1-1 · `prompts/` ist nicht Teil des Pakets, `PROMPTS_PATH` zeigt ins Leere
+### P1-1 · `prompts/` ist nicht Teil des Pakets, `PROMPTS_PATH` zeigt ins Leere ✅ **behoben**
 
 **Fundstelle:** `app/services/claude.py:14`
 
@@ -82,11 +125,11 @@ from importlib.resources import files
 from functools import lru_cache
 import json
 
+
 @lru_cache(maxsize=1)
 def _templates() -> dict:
-    return json.loads(
-        files("app.prompts").joinpath("templates.json").read_text(encoding="utf-8")
-    )
+    return json.loads(files("app.prompts").joinpath("templates.json").read_text(encoding="utf-8"))
+
 
 def load_prompt(worker: str) -> dict:
     return _templates()[worker]
@@ -101,7 +144,7 @@ entsprechende Kommentar im `Dockerfile` verweist genau auf dieses Finding.
 
 ---
 
-### P1-2 · Triage-Scoring ist nicht kalibriert
+### P1-2 · Triage-Scoring ist nicht kalibriert ✅ **behoben**
 
 **Fundstelle:** `app/hive/workers/triage.py:14`, `:31`
 
@@ -156,8 +199,9 @@ Kategorien reicht **ein** Body-Treffer über die 0.15-Schwelle
 @dataclass(frozen=True)
 class Signal:
     pattern: str
-    weight: float = 1.0        # starke Signale ("access-control-allow-origin") > 1.0,
-                               # generische ("timeout", "127.0.0.1") < 1.0
+    weight: float = 1.0  # starke Signale ("access-control-allow-origin") > 1.0,
+    # generische ("timeout", "127.0.0.1") < 1.0
+
 
 # Score = gewichtete Trefferpunkte gegen eine feste Sättigungskonstante,
 # nicht gegen die Kategoriegröße:
@@ -172,20 +216,21 @@ Blindflug. Genau dafür wäre die vorhandene Teststruktur der richtige Ort.
 
 ---
 
-### P1-3 · `except Exception: return None` macht den Claude-Modus unbeobachtbar
+### P1-3 · `except Exception: return None` macht den Claude-Modus unbeobachtbar ✅ **behoben**
 
 **Fundstelle:** `app/services/claude.py:26-40`
 
 ```python
-    try:
-        from anthropic import AsyncAnthropic
-        template = load_prompt(worker)
-        client = AsyncAnthropic(api_key=settings.anthropic_api_key)
-        response = await client.messages.create(...)
-        return response.content[0].text
-    except Exception:
-        # Any API problem degrades gracefully to heuristic mode.
-        return None
+try:
+    from anthropic import AsyncAnthropic
+
+    template = load_prompt(worker)
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    response = await client.messages.create(...)
+    return response.content[0].text
+except Exception:
+    # Any API problem degrades gracefully to heuristic mode.
+    return None
 ```
 
 Die Absicht — nie hart failen — ist richtig. Die Umsetzung verschluckt aber **alles**, ohne
@@ -219,7 +264,7 @@ Dauerausfall überhaupt auffällt.
 
 ---
 
-### P1-4 · `frozen=True` schützt die Knowledge-Base nicht
+### P1-4 · `frozen=True` schützt die Knowledge-Base nicht ✅ **behoben**
 
 **Fundstelle:** `app/knowledge/connectivity.py:10-18`
 
@@ -234,7 +279,7 @@ class ConnectivityCategory:
 Inhalte. Zwei belegte Konsequenzen:
 
 ```python
-hash(CATEGORIES[0])              # TypeError: unhashable type: 'list'
+hash(CATEGORIES[0])  # TypeError: unhashable type: 'list'
 CATEGORIES[0].signals.append(x)  # mutiert den globalen Zustand prozessweit
 ```
 
@@ -260,9 +305,35 @@ Aufrufstellen brauchen keine Änderung — `extend()`, Slicing und Iteration fun
 
 ---
 
+### P1-5 · `research`-Worker bezahlte Claude-Calls für verworfene Issues ✅ **behoben**
+
+*Nachgetragen bei der Token-Analyse.*
+
+**Fundstelle:** `app/hive/workers/research.py:42`
+
+`diagnosis.py:31` koppelte seinen Claude-Call an `triage.is_connectivity_issue`,
+`research.py` **nicht**. Für jedes Issue, das die Triage ausdrücklich als „out of scope"
+verwarf, wurde trotzdem ein Deep-Dive bezahlt — über ein Problem, zu dem die Triage
+gerade festgestellt hatte, dass sie nichts dazu weiß.
+
+Besonders unangenehm, weil es in Repo-Scans der **Regelfall** ist: In einem typischen
+Issue-Tracker ist die Mehrheit der Tickets kein Connectivity-Problem. Gemessen für
+`/analyze/repo` mit `limit=25` und 15 Out-of-Scope-Issues: **15 überflüssige Calls,
+~13.800 Input-Token pro Scan.**
+
+`docs/05-configuration.md` behauptete zu diesem Zeitpunkt bereits, Claude werde „only for
+issues that pass triage" aufgerufen — die Doku beschrieb also das beabsichtigte Verhalten,
+und der Code wich davon ab.
+
+**Fix:** derselbe Guard wie in `diagnosis.py`. Abgesichert durch
+`test_research_skips_claude_for_out_of_scope_issue` (zählt die Aufrufe) plus einen
+Gegentest, der belegt, dass Connectivity-Issues weiterhin einen Call auslösen.
+
+---
+
 ## P2 — Wichtig
 
-### P2-1 · HTTP-Clients werden pro Request neu gebaut
+### P2-1 · HTTP-Clients werden pro Request neu gebaut ✅ **behoben**
 
 **Fundstelle:** `app/services/github.py:24`, `app/services/claude.py:30`
 
@@ -282,6 +353,7 @@ interner httpx-Client bleibt bis zum GC offen.
 ```python
 from contextlib import asynccontextmanager
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.http = httpx.AsyncClient(timeout=20)
@@ -289,13 +361,14 @@ async def lifespan(app: FastAPI):
     yield
     await app.state.http.aclose()
 
+
 app = FastAPI(..., lifespan=lifespan)
 ```
 
 Das ist zugleich die Voraussetzung, um die Clients in Tests sauber austauschen zu können
 (siehe P3-2).
 
-### P2-2 · `load_prompt()` liest die JSON bei jedem Aufruf neu
+### P2-2 · `load_prompt()` liest die JSON bei jedem Aufruf neu ✅ **behoben**
 
 **Fundstelle:** `app/services/claude.py:17-19` — `PROMPTS_PATH.read_text()` +
 `json.loads()` laufen bei *jedem* Claude-Call, also zweimal pro analysiertem Issue.
@@ -303,15 +376,21 @@ Synchroner Datei-I/O im Event-Loop, in einer App, deren Knowledge-Base
 `event_loop_blocking` als eigene Diagnosekategorie führt. Behoben durch den `lru_cache`
 aus P1-1.
 
-### P2-3 · `max_tokens` in `prompts/templates.json` ist tote Konfiguration
+### P2-3 · `max_tokens` in `prompts/templates.json` ist tote Konfiguration ✅ **behoben**
 
-`templates.json` definiert pro Worker `max_tokens` (512 / 512 / 400). Gelesen wird davon
-nichts: `ask_claude()` (`claude.py:22`) nutzt ausschließlich sein eigenes Default von
-`1024`, und kein Aufrufer übergibt den Parameter. Entweder auswerten
-(`template.get("max_tokens", max_tokens)`) oder aus der JSON entfernen — aktuell
-suggeriert die Datei eine Steuerung, die es nicht gibt.
+`templates.json` definiert pro Worker `max_tokens` (512 / 512 / 400). Gelesen wurde davon
+nichts: `ask_claude()` nutzte ausschließlich sein eigenes Default von `1024`, und kein
+Aufrufer übergab den Parameter. Das Output-Budget war damit durchgehend **doppelt so hoch
+wie konfiguriert** — bei einem Scan mit 25 Connectivity-Issues 51.200 statt 25.600 Token.
 
-### P2-4 · `/health` und `/categories` haben ein leeres OpenAPI-Schema
+**Fix:** `_resolve_max_tokens(template, explicit)` in `app/services/claude.py` löst in der
+Reihenfolge explizites Argument → `templates.json` → Default auf. Die Funktion bekommt das
+bereits geladene Template übergeben statt eines Worker-Namens, damit die Auflösung keinen
+zusätzlichen Dateizugriff kostet (P2-2 bleibt davon unberührt offen). Abgesichert durch
+`tests/test_token_budget.py::test_max_tokens_precedence` und einen Test, der prüft, dass
+alle ausgelieferten Templates ein Budget unterhalb des Defaults deklarieren.
+
+### P2-4 · `/health` und `/categories` haben ein leeres OpenAPI-Schema ✅ **behoben**
 
 **Fundstelle:** `app/main.py:23`, `:33`
 
@@ -326,12 +405,12 @@ das ausgerechnet die beiden Endpunkte, die ein Nutzer zuerst öffnet. Zwei klein
 Response-Models (`HealthResponse`, `CategoryInfo`) in `schemas.py` beheben das und passen
 zur sonst durchgehaltenen Pydantic-Disziplin.
 
-### P2-5 · `owner` und `repo` landen ungeprüft in der GitHub-URL
+### P2-5 · `owner` und `repo` landen ungeprüft in der GitHub-URL ✅ **behoben**
 
 **Fundstelle:** `app/schemas.py:14-15` → `app/services/github.py:21`
 
 ```python
-owner: str = Field(..., min_length=1, max_length=100)   # keine Zeichenbeschränkung
+owner: str = Field(..., min_length=1, max_length=100)  # keine Zeichenbeschränkung
 ...
 url = f"{API_BASE}/repos/{owner}/{repo}/issues"
 ```
@@ -346,10 +425,10 @@ das in anderem Kontext zu SSRF wird.
 
 ```python
 owner: str = Field(..., pattern=r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
-repo:  str = Field(..., pattern=r"^[A-Za-z0-9._-]{1,100}$")
+repo: str = Field(..., pattern=r"^[A-Za-z0-9._-]{1,100}$")
 ```
 
-### P2-6 · API-Keys als `str` statt `SecretStr`
+### P2-6 · API-Keys als `str` statt `SecretStr` ✅ **behoben**
 
 **Fundstelle:** `app/config.py:10-11`. `anthropic_api_key` und `github_token` sind
 gewöhnliche Strings. Sobald irgendwo ein `Settings`-Objekt in einen Traceback, ein Log
@@ -361,7 +440,7 @@ Standardpraxis und ein Einzeiler:
 anthropic_api_key: SecretStr = SecretStr("")
 ```
 
-### P2-7 · `/analyze/repo` fächert unbegrenzt auf
+### P2-7 · `/analyze/repo` fächert unbegrenzt auf ✅ **behoben**
 
 **Fundstelle:** `app/hive/queen.py:50`
 
@@ -372,10 +451,19 @@ reports = await asyncio.gather(*(self.analyze_issue(issue) for issue in issues))
 Bis zu 25 Issues (`RepoScanRequest.limit`, `le=25`) × 2 Claude-Calls = 50 parallele
 API-Aufrufe aus einem einzigen HTTP-Request, ohne Semaphore und ohne Gesamt-Timeout. Bei
 aktivem Claude-Modus ist das ein zuverlässiger Weg ins Rate-Limit; der Client hängt
-derweil im offenen Request. Ein `asyncio.Semaphore(5)` und ein `asyncio.timeout()` um den
-gesamten Scan sind die minimale Absicherung.
+derweil im offenen Request.
 
-### P2-8 · `connectivity_reports` wird berechnet, aber nicht verwendet
+**Fix:** `asyncio.Semaphore(settings.max_concurrent_analyses)` (Default 5) begrenzt die
+Gleichzeitigkeit, ein `asyncio.wait_for` mit `settings.scan_timeout_seconds` (Default 120)
+den Gesamtlauf; `main.py` übersetzt den Timeout in ein `504` statt in ein `500`.
+
+Bewusst `wait_for` statt des lesbareren `asyncio.timeout()`: letzteres gibt es erst ab
+Python 3.11, und `requires-python` verspricht 3.10 — die CI-Matrix testet es.
+
+Abgesichert durch `test_repo_scan_caps_concurrency` (misst die tatsächliche Parallelität)
+und `test_repo_scan_times_out_instead_of_hanging`.
+
+### P2-8 · `connectivity_reports` wird berechnet, aber nicht verwendet ✅ **behoben**
 
 **Fundstelle:** `app/hive/queen.py:52-58`
 
@@ -394,7 +482,7 @@ nichts. Entweder filtern oder das Feld in `RepoScanReport` dokumentieren
 (`Field(description=...)`), damit Aufrufer wissen, dass `reports` auch Nicht-Treffer
 enthält.
 
-### P2-9 · Keine Fehler-Middleware, keine Logs, keine Request-ID
+### P2-9 · Keine Fehler-Middleware, keine Logs, keine Request-ID ✅ **behoben**
 
 Im gesamten Projekt gibt es **keine einzige** `logging`-Nutzung. Es gibt keinen globalen
 Exception-Handler; ein unerwarteter Fehler wird zu einer nackten `500` ohne Korrelation
@@ -409,7 +497,7 @@ den Log-Kontext und in den Response-Header wandert. Für eine App dieser Größe
 ein `logging`-Setup in `main.py`, eine Request-ID-Middleware, ein
 `@app.exception_handler(Exception)`.
 
-### P2-10 · Keine CORS-Middleware
+### P2-10 · Keine CORS-Middleware ✅ **behoben**
 
 Die App diagnostiziert CORS-Probleme als Kernkompetenz, konfiguriert selbst aber keine
 `CORSMiddleware`. Sobald jemand ein Web-Frontend gegen `/analyze/issue` baut, läuft er
@@ -418,7 +506,7 @@ in genau den Fehler, den die eigene Knowledge-Base als ersten CORS-Root-Cause f�
 Setting (`allowed_origins: list[str] = []`), damit die Default-Konfiguration restriktiv
 bleibt.
 
-### P2-11 · GitHub-Client ohne Retries, Pagination und 429-Behandlung
+### P2-11 · GitHub-Client ohne Retries, Pagination und 429-Behandlung ✅ **behoben**
 
 **Fundstelle:** `app/services/github.py:27-32`
 
@@ -433,14 +521,14 @@ bleibt.
 - Nach dem PR-Filter (`github.py:36`) können weniger als `limit` Issues zurückkommen —
   die Antwort sagt dann `issues_scanned: 3`, obwohl 5 angefordert waren, ohne Hinweis.
 
-### P2-12 · Version an zwei Stellen gepflegt
+### P2-12 · Version an zwei Stellen gepflegt ✅ **behoben**
 
 `app/__init__.py` setzt `__version__ = "1.0.0"`, `pyproject.toml` ebenfalls. Bei einem
 Release driften die auseinander, und `/health` meldet dann die falsche Version.
 `importlib.metadata.version("fastapi-issue-hive")` macht `pyproject.toml` zur einzigen
 Quelle.
 
-### P2-13 · Regex-Patterns werden nicht vorkompiliert
+### P2-13 · Regex-Patterns werden nicht vorkompiliert ✅ **behoben**
 
 **Fundstelle:** `app/hive/workers/triage.py:23-30`. Pro Issue laufen ~73 `re.search`-Aufrufe
 über Roh-Strings, ein Teil davon zweimal (einmal gegen `text`, einmal gegen den Titel für
@@ -452,7 +540,7 @@ weil `triage.run()` synchron im Event-Loop läuft.
 
 ## P3 — Tooling, Tests, Hygiene
 
-### P3-1 · Kein Lint-, Format- oder Type-Tooling
+### P3-1 · Kein Lint-, Format- oder Type-Tooling ✅ **behoben**
 
 Es gibt weder ruff noch mypy noch pre-commit — obwohl `.gitignore` bereits `.ruff_cache/`
 und `.mypy_cache/` listet, die Absicht also bestand. Das ist 2026 die größte einzelne
@@ -479,7 +567,7 @@ strict = true
 dieselbe Sache doppelt. Dazu ein `.pre-commit-config.yaml` mit `ruff check --fix` **vor**
 `ruff format` (die Reihenfolge ist wichtig) und mypy als dritter Hook.
 
-### P3-2 · Beide I/O-Module sind vollständig ungetestet
+### P3-2 · Beide I/O-Module sind vollständig ungetestet ✅ **behoben**
 
 Die 12 Tests decken Triage, Queen-Pipeline und die HTTP-Schicht ab — aber:
 
@@ -499,8 +587,11 @@ der Wahl ist `respx` oder `httpx.MockTransport`:
 @pytest.mark.asyncio
 async def test_fetch_open_issues_filters_pull_requests(respx_mock):
     respx_mock.get(url__regex=r".*/repos/o/r/issues").respond(
-        200, json=[{"title": "real issue", "body": "x"},
-                   {"title": "a PR", "pull_request": {"url": "..."}}]
+        200,
+        json=[
+            {"title": "real issue", "body": "x"},
+            {"title": "a PR", "pull_request": {"url": "..."}},
+        ],
     )
     issues = await fetch_open_issues("o", "r", limit=5)
     assert [i.title for i in issues] == ["real issue"]
@@ -513,7 +604,7 @@ Kleinigkeit am Rande: `tests/test_api.py:5` legt den `TestClient` auf Modulebene
 als Fixture. Das teilt Zustand zwischen Tests und verhindert, dass ein `lifespan`
 (P2-1) sauber pro Test hoch- und runtergefahren wird.
 
-### P3-3 · CI prüft ausschließlich Tests
+### P3-3 · CI prüft ausschließlich Tests ✅ **behoben**
 
 `.github/workflows/ci.yml` läuft nach der uv-Migration sauber, deckt aber nur `pytest` ab.
 Was fehlt:
@@ -531,7 +622,7 @@ Was fehlt:
 Ergänzend zum Repo, nicht zur CI: kein Dependabot/Renovate, kein `SECURITY.md`, kein
 `CODEOWNERS`, keine Issue-/PR-Templates, kein `CHANGELOG.md`, kein `py.typed`.
 
-### P3-4 · Dockerfile-Härtung offen
+### P3-4 · Dockerfile-Härtung offen ✅ **behoben**
 
 Die uv-Migration hat den Build auf Multi-Stage umgestellt, aber bewusst nichts an der
 Sicherheitskonfiguration geändert. Offen bleiben:
@@ -544,7 +635,7 @@ Sicherheitskonfiguration geändert. Offen bleiben:
 - **Base-Image nicht per Digest gepinnt** (`python:3.12-slim` statt `python:3.12-slim@sha256:…`)
   — reproduzierbare Builds brauchen den Digest.
 
-### P3-5 · Kleinere Doku- und Konfigurationsfehler
+### P3-5 · Kleinere Doku- und Konfigurationsfehler ✅ **behoben**
 
 | Fundstelle | Problem |
 |---|---|
@@ -552,7 +643,7 @@ Sicherheitskonfiguration geändert. Offen bleiben:
 | `.env.example` | `MAX_ISSUES_PER_REPO` fehlt, obwohl in `config.py:13` vorhanden und in `docs/05-configuration.md` dokumentiert |
 | `app/hive/queen.py:3-4` | Verweist auf `config/swarm-config.json` aus einem anderen Projekt — im Repo nicht vorhanden |
 
-### P3-6 · Kommende Breaking Changes im Abhängigkeitsbaum
+### P3-6 · Kommende Breaking Changes im Abhängigkeitsbaum ✅ **behoben**
 
 Die Neuauflösung des Lockfiles bei der uv-Migration hat die Abhängigkeiten auf aktuellen
 Stand gehoben (u.a. FastAPI 0.140.8, Starlette 1.3.1, Pydantic 2.13.4, pytest 9.1.1).
@@ -572,45 +663,164 @@ nicht gesetzten Default.
 
 ---
 
+## P4 — Beim Beheben zusätzlich gefunden
+
+Zwei Defekte, die im ursprünglichen Review fehlten. Beide fielen erst auf, als die in
+P3-2 geforderten Tests tatsächlich geschrieben wurden — ein gutes Argument dafür, dass
+Testabdeckung an den I/O-Rändern keine Fleißarbeit ist.
+
+### P4-1 · Ein einzelnes ungewöhnliches Issue riss den ganzen Scan ab ✅ **behoben**
+
+**Fundstelle:** `app/services/github.py`, `_to_issue()`
+
+`IssueInput` verlangt einen Titel von mindestens 3 Zeichen und einen Body unter 20.000
+Zeichen. Diese Grenzen sind für **Nutzereingaben** an `/analyze/issue` gedacht. Beim
+Einlesen **fremder** Issues aus GitHub wurden sie zur Falle: Ein reales Ticket mit dem
+Titel „ok" oder einem sehr langen Body ließ `fetch_open_issues()` mit einem
+`ValidationError` abbrechen — und damit den kompletten Repo-Scan, nicht nur dieses eine
+Issue.
+
+Aufgefallen ist das erst, als der respx-Test Fixtures mit kurzen Titeln benutzte.
+
+**Fix:** `_to_issue()` gibt `None` zurück statt zu werfen, loggt das übersprungene Issue
+mit seiner URL, und der Body wird beim Einlesen auf `MAX_BODY_CHARS` gekürzt. Ein
+unbrauchbares Issue kostet jetzt dieses Issue, nicht den Report.
+
+### P4-2 · Die Testsuite war nicht von der Umgebung isoliert ✅ **behoben**
+
+**Fundstelle:** fehlende `tests/conftest.py`
+
+`Settings` liest aus Umgebungsvariablen. Die Tests taten das ungefiltert mit — in der
+Entwicklungsumgebung war `GITHUB_TOKEN` gesetzt, weshalb ein Test plötzlich einen
+`Authorization`-Header sah, den er nicht erwartete.
+
+Die harmlose Variante ist der fehlgeschlagene Test. Die unangenehme: Mit gesetztem
+`ANTHROPIC_API_KEY` hätte die Suite **echte, kostenpflichtige API-Calls** gemacht — und
+genau das Versprechen gebrochen, mit dem README, `CONTRIBUTING.md` und `docs/01` werben
+(„12 tests, zero API keys required"). Niemand hätte es bemerkt, außer an der Rechnung.
+
+**Fix:** Ein `autouse`-Fixture in `tests/conftest.py` löscht alle von `Settings` gelesenen
+Umgebungsvariablen und leert die `lru_cache`s von `get_settings` und beiden Clients — vor
+und nach jedem Test.
+
+---
+
+## Sonderteil: Taugt die NotebookLM-Integration? ✅ **verbessert**
+
+Die Grundidee ist richtig. NotebookLM hat keine öffentliche API, also ist „erzeuge gute
+Quelldokumente" der einzig verfügbare Integrationsweg — und ein Werkzeug, das ohnehin
+Triage-Verdikt, Hintergrund und Doku-Links zusammenträgt, ist dafür gut aufgestellt.
+
+Für den **Einzelfall** funktioniert das auch: Ein Brief ist selbsttragend, und
+NotebookLM-Antworten sind nur so gut wie ihre Quellen.
+
+Für den **Korpusfall** brach es — und ausgerechnet den bewarb `docs/07` selbst unter
+„Niche research at scale" als Hauptanwendung. Gemessen an einem Connectivity-Brief:
+
+| Anteil | Inhalt |
+|---|---|
+| **59%** | Knowledge-Base-Boilerplate, identisch in jedem Brief derselben Kategorie |
+| **18%** | Prompt-Block, wörtlich identisch in **jedem** Brief |
+| **17%** | tatsächlich issue-spezifisch |
+
+Bei Out-of-Scope-Issues kippt das Verhältnis vollends: 54% Prompt-Block, 34% Eigeninhalt.
+Wer 20 Briefs in ein Notebook lädt, füllt es zu rund drei Vierteln mit Dubletten. Auf die
+von der Doku selbst vorgeschlagene Frage *„Which failure categories cluster most often?"*
+sieht NotebookLM dieselben Root-Cause-Absätze dutzendfach — es gruppiert dann Wiederholung
+statt Evidenz. Erschwerend: Für den beschriebenen Workflow gab es **gar keinen Endpunkt**,
+die Doku zeigte eine manuelle `curl | python -c`-Extraktion pro Issue.
+
+**Umsetzung:** Der Scan zerfällt jetzt in den Teil, der sich ändert, und den, der nicht:
+
+- `POST /analyze/repo/corpus` — ein Dokument pro Scan: Häufigkeitstabelle der Kategorien
+  (die direkte Antwort auf die Clustering-Frage), pro Issue nur Titel, Link, Triage-Verdikt,
+  gerankte Kategorien und ggf. Claude-Notizen, und der Prompt-Block genau **einmal**.
+- `GET /knowledge/export` — die Knowledge-Base als eigene, wiederverwendbare Quelle.
+
+Beide liefern `text/markdown` direkt, der JSON-Extraktionsschritt entfällt.
+
+Gemessen an 20 Issues gegenüber dem bisherigen Aneinanderhängen der Briefs:
+
+| | Zeichen | ~Token |
+|---|---|---|
+| bisher: 20 Briefs | 22.569 | 6.100 |
+| neu: Korpus | 5.417 | 1.464 |
+| neu: Knowledge-Base (einmalig, wiederverwendbar) | 8.539 | 2.308 |
+
+Der Korpus allein ist **76% kleiner**; beide Quellen zusammen 39%, und die
+Knowledge-Base amortisiert sich über jeden weiteren Scan im selben Notebook. Der
+KB-Fließtext taucht im Korpus **0×** statt 4× auf, der Prompt-Block **1×** statt 20×.
+
+**Einzel-Briefs bleiben bewusst unverändert** — ihre Selbsttragfähigkeit ist in `docs/07`
+ausdrücklich als Designziel benannt und für den Einzelfall auch die richtige Wahl.
+
+### Was hier *nicht* geholfen hätte
+
+Naheliegend, aber für dieses Projekt unwirksam: den Antwortstil zu komprimieren
+(„caveman-Prompting" und Verwandtes). Die Calls sind One-Shot-Aufrufe mit `max_tokens`-Cap,
+kein Chat; der Diagnosis-System-Prompt verbietet Präambeln bereits wörtlich; und die
+System-Prompts sind 71–128 Token groß, ihre Kompression also irrelevant. **Anthropic
+Prompt-Caching greift hier ebenfalls nicht** — es verlangt ein Präfix von mindestens 1024
+Token. Der Hebel lag auf der Anzahl der Calls (P1-5) und einem harten Output-Budget
+(P2-3), nicht am Formulierungsstil.
+
+---
+
 ## Referenzen — Industriestandard 2026
 
 | Thema | Standard / Werkzeug | Stand im Projekt |
 |---|---|---|
-| Paketverwaltung | [uv](https://docs.astral.sh/uv/), PEP 621 + [PEP 735](https://peps.python.org/pep-0735/), Lockfile im VCS | ✅ seit dieser Migration |
-| Lint & Format | [ruff](https://docs.astral.sh/ruff/) statt flake8/black/isort/pyupgrade | ❌ P3-1 |
-| Typprüfung | [mypy](https://mypy.readthedocs.io/) `strict` (alternativ ty/pyright) | ❌ P3-1 |
-| Pre-Commit | [ruff-pre-commit](https://github.com/astral-sh/ruff-pre-commit), Lint vor Format | ❌ P3-1 |
-| Container | [uv Docker-Guide](https://docs.astral.sh/uv/guides/integration/docker/): Multi-Stage, Cache-Mounts, non-root | 🟡 Multi-Stage ✅, non-root ❌ (P3-4) |
-| CI | [setup-uv](https://github.com/astral-sh/setup-uv) mit Cache, `--locked`, Least-Privilege-`permissions` | 🟡 P3-3 |
-| Fehlerformat | [RFC 9457 Problem Details](https://www.rfc-editor.org/info/rfc9457/) statt `{"detail": …}` | ❌ P2-9 |
-| Logging | [structlog](https://www.structlog.org/) → JSON, Trace-Korrelation via [OpenTelemetry](https://opentelemetry.io/docs/languages/python/) | ❌ P2-9 |
-| Konfiguration | pydantic-settings mit `SecretStr` für Secrets | 🟡 P2-6 |
-| HTTP-Clients | Geteilte Clients über `lifespan`, Pooling, Timeouts, Retries | ❌ P2-1, P2-11 |
-| Tests | pytest + Coverage-Gate, I/O gemockt via [respx](https://lundberg.github.io/respx/) | 🟡 P3-2 |
-| Supply Chain | [pip-audit](https://pypi.org/project/pip-audit/), Dependabot/Renovate, SBOM (CycloneDX) | ❌ P3-3 |
+| Paketverwaltung | [uv](https://docs.astral.sh/uv/), PEP 621 + [PEP 735](https://peps.python.org/pep-0735/), Lockfile im VCS | ✅ |
+| Lint & Format | [ruff](https://docs.astral.sh/ruff/) statt flake8/black/isort/pyupgrade | ✅ |
+| Typprüfung | [mypy](https://mypy.readthedocs.io/) `strict` (alternativ ty/pyright) | ✅ |
+| Pre-Commit | [ruff-pre-commit](https://github.com/astral-sh/ruff-pre-commit), Lint vor Format | ✅ |
+| Container | [uv Docker-Guide](https://docs.astral.sh/uv/guides/integration/docker/): Multi-Stage, Cache-Mounts, non-root, Digest-Pin | ✅ |
+| CI | [setup-uv](https://github.com/astral-sh/setup-uv) mit Cache, `--locked`, Least-Privilege-`permissions` | ✅ |
+| Fehlerformat | [RFC 9457 Problem Details](https://www.rfc-editor.org/info/rfc9457/) statt `{"detail": …}` | ✅ |
+| Logging | JSON auf stdout, Request-ID-Korrelation | ✅ (siehe Hinweis unten) |
+| Konfiguration | pydantic-settings mit `SecretStr` für Secrets | ✅ |
+| HTTP-Clients | Geteilte Clients über `lifespan`, Pooling, Timeouts, Retries | ✅ |
+| Tests | pytest + Coverage-Gate, I/O gemockt via [respx](https://lundberg.github.io/respx/) | ✅ |
+| Supply Chain | [pip-audit](https://pypi.org/project/pip-audit/) in CI, Action-Pinning per SHA | ✅ |
+| Verteiltes Tracing | [structlog](https://www.structlog.org/) + [OpenTelemetry](https://opentelemetry.io/docs/languages/python/) | ⬜ bewusst offen |
+
+**Zum Logging-Eintrag:** Die Referenz nennt structlog und OTel. Umgesetzt ist stdlib
+`logging` mit JSON-Formatter und ContextVar-Request-ID — funktional deckungsgleich für
+diesen Anwendungsfall, aber **ohne zusätzliche Laufzeitabhängigkeit**. Das ist eine
+bewusste Abwägung: „läuft ohne externe Dienste und ohne Konfiguration" ist die
+Kerneigenschaft dieses Projekts, und dafür einen Logging-Stack einzuziehen wäre teuer
+erkauft. Sobald verteiltes Tracing über Servicegrenzen dazukommt, ist der Wechsel eine
+lokale Änderung in `app/observability.py` — die Aufrufstellen benutzen nur `logging`.
 
 ---
 
-## Empfohlene Reihenfolge
+## Wie die Umsetzung lief
 
-**Stufe 1 — Fundament (klein, hoher Hebel).** Erst das Sicherheitsnetz, damit alles
-Weitere überprüfbar wird: ruff + mypy + pre-commit einziehen (P3-1), CI um Lint,
-Typecheck, `permissions` und `pip-audit` erweitern (P3-3), Logging-Grundgerüst legen
-(P2-9). Dabei fallen etliche kleine Findings automatisch mit ab — der lokale Import in
-`main.py:50`, ungenutzte Variablen, die tote `max_tokens`-Konfiguration.
+Die ursprünglich empfohlene Reihenfolge hat sich bewährt und wurde so abgearbeitet:
+erst das Sicherheitsnetz (ruff, mypy, pre-commit, CI), dann die P1-Defekte, dann die
+Tests an den I/O-Rändern, zuletzt die Produktionsreife.
 
-**Stufe 2 — Die vier P1-Defekte.** `tuple` statt `list` in der Knowledge-Base (P1-4,
-Zweizeiler), Fehlerbehandlung in `claude.py` differenzieren (P1-3), `prompts/` als
-Package-Data über `importlib.resources` (P1-1, erlaubt danach die Dockerfile-Vereinfachung).
-Das Triage-Scoring (P1-2) zuletzt und **nur mit vorher aufgebautem Fixture-Datensatz** —
-ohne Messgröße ist jede Änderung an der Formel eine Wette.
+Zwei Dinge daran sind rückblickend erwähnenswert:
 
-**Stufe 3 — Tests an den I/O-Rändern.** `services/github.py` und `services/claude.py` mit
-respx abdecken (P3-2), Coverage-Gate setzen. Erst damit werden die Änderungen aus Stufe 2
-gegen Regressionen abgesichert.
+**Der Fixture-Korpus war die richtige Bedingung.** Das Review hatte gefordert, das
+Triage-Scoring (P1-2) nur mit vorher aufgebauter Messgröße anzufassen. Genau das hat sich
+ausgezahlt: Die alte Formel lag bei Precision 0.93 / Recall 1.00 / F1 0.96, die neue bei
+1.00 / 1.00 / 1.00. Ohne die Messung wäre nicht unterscheidbar gewesen, ob die neue Formel
+wirklich besser ist oder nur anders — und der Korpus hat außerdem eine Lücke in der
+Knowledge-Base aufgedeckt: `event_loop_blocking` beschrieb in seinen Root-Causes „sync DB
+drivers inside async def", hatte dafür aber keinen einzigen Cue.
 
-**Stufe 4 — Produktionsreife.** Geteilte Clients über `lifespan` (P2-1), Semaphore und
-Timeout für `/analyze/repo` (P2-7), RFC-9457-Fehlerformat, Response-Models für `/health`
-und `/categories` (P2-4), Docker-Härtung (P3-4).
+**Die geforderten Tests haben zwei zusätzliche Defekte gefunden**, die im Review nicht
+standen (P4-1 und P4-2) — darunter einer, der die Testsuite unter bestimmten Umgebungen
+echte API-Calls hätte machen lassen. Testabdeckung an den I/O-Rändern war hier keine
+Formalität.
 
-Die Doku-Fixes aus P3-5 sind Minutensache und passen in jede der Stufen.
+### Was bewusst offen bleibt
+
+- **Verteiltes Tracing** (structlog/OpenTelemetry). Erst sinnvoll, wenn dieser Dienst
+  Teil einer Aufrufkette wird; die Umstellung ist dann auf `app/observability.py` begrenzt.
+- **Dependabot/Renovate, `SECURITY.md`, `CODEOWNERS`, Issue-/PR-Templates, `CHANGELOG.md`.**
+  Repository-Organisation, keine Code-Defekte — und Sache der Projektleitung, nicht eines
+  Reviews.
+- **`py.typed`.** Sinnvoll, sobald das Paket als Bibliothek importiert wird; als Anwendung
+  bringt es nichts.

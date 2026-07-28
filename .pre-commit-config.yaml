@@ -1,0 +1,32 @@
+# Install once with: uv run pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      # Lint with --fix before formatting: the fixer rewrites code, the formatter then
+      # lays out whatever came back. The other order re-breaks the formatting.
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        # Types the hooks' isolated env cannot infer from the source alone.
+        additional_dependencies:
+          - pydantic>=2.7
+          - pydantic-settings>=2.3
+          - fastapi>=0.115
+          - httpx>=0.27
+          - pytest>=8.0

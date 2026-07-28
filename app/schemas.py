@@ -1,18 +1,23 @@
 from pydantic import BaseModel, Field
 
+MAX_BODY_CHARS = 20000
+
 
 class IssueInput(BaseModel):
     """A GitHub issue (or free-form problem description) to analyze."""
 
     title: str = Field(..., min_length=3, max_length=500)
-    body: str = Field(default="", max_length=20000)
+    body: str = Field(default="", max_length=MAX_BODY_CHARS)
     url: str = ""
     labels: list[str] = []
 
 
 class RepoScanRequest(BaseModel):
-    owner: str = Field(..., min_length=1, max_length=100)
-    repo: str = Field(..., min_length=1, max_length=100)
+    # Both are interpolated straight into the GitHub API path, so they are constrained to
+    # GitHub's own naming rules. Length alone let a value like "../.." change which
+    # endpoint got called.
+    owner: str = Field(..., pattern=r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
+    repo: str = Field(..., pattern=r"^[A-Za-z0-9._-]{1,100}$")
     limit: int = Field(default=5, ge=1, le=25)
 
 
@@ -46,6 +51,7 @@ class ResearchBrief(BaseModel):
 
 class AnalysisReport(BaseModel):
     issue_title: str
+    issue_url: str = ""
     triage: TriageResult
     diagnosis: Diagnosis
     research_brief: ResearchBrief
@@ -58,4 +64,22 @@ class RepoScanReport(BaseModel):
     repo: str
     issues_scanned: int
     connectivity_issues_found: int
-    reports: list[AnalysisReport]
+    reports: list[AnalysisReport] = Field(
+        description=(
+            "One report per scanned issue, connectivity-related or not. Filter on "
+            "triage.is_connectivity_issue to get only the matches counted by "
+            "connectivity_issues_found."
+        )
+    )
+
+
+class HealthResponse(BaseModel):
+    status: str
+    version: str
+    mode: str = Field(description="'heuristic' or 'claude-enhanced'")
+
+
+class CategoryInfo(BaseModel):
+    id: str
+    name: str
+    description: str

@@ -1,7 +1,6 @@
 """The Hive Queen — orchestrates the worker agents for each analysis.
 
-Pipeline (mirrors the hierarchical topology of the original
-Digital Product Factory swarm, config/swarm-config.json):
+Pipeline (a hierarchical topology: one orchestrator, workers that decide):
 
     Queen
       ├─ triage worker      (sync, deterministic, always first)
@@ -38,6 +37,7 @@ class HiveQueen:
 
         return AnalysisReport(
             issue_title=issue.title,
+            issue_url=issue.url,
             triage=triage_result,
             diagnosis=diagnosis_result,
             research_brief=research_brief,
@@ -47,7 +47,19 @@ class HiveQueen:
 
     async def scan_repository(self, owner: str, repo: str, limit: int = 5) -> RepoScanReport:
         issues = await fetch_open_issues(owner, repo, limit)
-        reports = await asyncio.gather(*(self.analyze_issue(issue) for issue in issues))
+        settings = get_settings()
+        semaphore = asyncio.Semaphore(settings.max_concurrent_analyses)
+
+        async def analyze_bounded(issue: IssueInput) -> AnalysisReport:
+            async with semaphore:
+                return await self.analyze_issue(issue)
+
+        # asyncio.timeout() would read better but only exists on 3.11+, and the project
+        # supports 3.10 (see requires-python and the CI matrix).
+        reports = await asyncio.wait_for(
+            asyncio.gather(*(analyze_bounded(issue) for issue in issues)),
+            timeout=settings.scan_timeout_seconds,
+        )
 
         connectivity_reports = [r for r in reports if r.triage.is_connectivity_issue]
         return RepoScanReport(
